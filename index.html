@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>家里点餐</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="phone-shell">
+      <section class="hero" aria-label="餐厅信息">
+        <div class="hero-actions">
+          <button class="round-button" id="themeToggle" type="button" aria-label="切换主题" title="切换主题">◐</button>
+          <button class="round-button" id="openAddDish" type="button" aria-label="添加菜品" title="添加菜品">＋</button>
+        </div>
+      </section>
+
+      <section class="restaurant">
+        <img class="avatar" src="./assets/brand.svg" alt="家庭餐厅头像" />
+        <div>
+          <p class="eyebrow">私房菜单</p>
+          <h1>家里饭桌</h1>
+          <p class="subtitle">今天想吃什么，自己点。</p>
+        </div>
+      </section>
+
+      <section class="toolbar" aria-label="菜单工具">
+        <button class="manage-button" id="openAddDish2" type="button">添加菜品</button>
+        <button class="manage-button" id="toggleManage" type="button">管理菜品</button>
+        <button class="manage-button" id="openTodayOrders" type="button">今日订单</button>
+        <label class="search">
+          <span aria-hidden="true">⌕</span>
+          <input id="searchInput" type="search" placeholder="搜索菜名" />
+        </label>
+      </section>
+
+      <section class="content">
+        <nav class="categories" id="categoryTabs" aria-label="菜品分类"></nav>
+        <section class="menu-area">
+          <h2 id="categoryTitle">煮食</h2>
+          <div class="menu" id="menuList" aria-label="菜单"></div>
+        </section>
+      </section>
+    </main>
+
+    <aside class="cart" aria-label="购物车">
+      <button class="cart-summary" id="cartToggle" type="button" aria-expanded="false">
+        <span class="cart-icon" aria-hidden="true">□</span>
+        <span>
+          <strong>已选 <b id="cartCount">0</b> 份</strong>
+          <small id="cartHint">先点几道菜吧</small>
+        </span>
+        <span class="cart-arrow" aria-hidden="true">清单</span>
+      </button>
+      <button class="order-button" id="placeOrder" type="button">下单</button>
+
+      <div class="cart-panel" id="cartPanel" hidden>
+        <div class="cart-header">
+          <h2>我的订单</h2>
+          <button class="text-button" id="clearCart" type="button">清空</button>
+        </div>
+        <div class="cart-items" id="cartItems"></div>
+      </div>
+    </aside>
+
+    <dialog class="order-dialog page-dialog" id="orderDialog">
+      <section class="order-sheet" id="orderSheet">
+        <button class="home-button" id="closeOrder" type="button" aria-label="返回菜单">⌂</button>
+        <header class="order-success">
+          <span class="checkmark" aria-hidden="true">✓</span>
+          <div>
+            <h2>已下单</h2>
+            <p>家里饭桌已收到，准备开做。</p>
+          </div>
+        </header>
+
+        <section class="order-card">
+          <span class="order-tag">家庭点餐</span>
+          <div class="pickup-row">
+            <strong id="pickupCode">0000</strong>
+            <span>家里取餐</span>
+          </div>
+        </section>
+
+        <section class="order-card">
+          <h3 id="orderItemCount">共0件菜</h3>
+          <div class="order-items" id="orderItems"></div>
+        </section>
+
+        <section class="order-card detail-card">
+          <h3>订单详情</h3>
+          <dl>
+            <div>
+              <dt>订单编号</dt>
+              <dd id="orderNumber">--</dd>
+            </div>
+            <div>
+              <dt>下单时间</dt>
+              <dd id="orderTime">--</dd>
+            </div>
+          </dl>
+        </section>
+
+        <footer class="order-footer">
+          <button class="primary-button" id="backToMenu" type="button">返回菜单</button>
+        </footer>
+      </section>
+    </dialog>
+
+    <dialog class="order-dialog page-dialog" id="todayOrdersDialog">
+      <section class="order-sheet history-sheet">
+        <button class="home-button" id="closeTodayOrders" type="button" aria-label="返回菜单">⌂</button>
+        <header class="history-header">
+          <div>
+            <p class="eyebrow">今日订单</p>
+            <h2>今天已下单</h2>
+          </div>
+          <button class="secondary-button compact" id="refreshTodayOrders" type="button">刷新</button>
+        </header>
+        <div class="history-list" id="todayOrdersList"></div>
+      </section>
+    </dialog>
+
+    <dialog class="dish-dialog" id="dishDialog">
+      <form class="dish-form" id="dishForm" method="dialog">
+        <div class="dialog-header">
+          <h2 id="dishDialogTitle">添加菜品</h2>
+          <button class="round-button small" id="closeAddDish" type="button" aria-label="关闭">×</button>
+        </div>
+
+        <input id="dishId" name="id" type="hidden" />
+
+        <label class="field">
+          <span>菜名</span>
+          <input id="dishName" name="name" required maxlength="16" placeholder="例如：番茄牛腩" />
+        </label>
+
+        <label class="field">
+          <span>分类</span>
+          <select id="dishCategory" name="category">
+            <option>主食</option>
+            <option>汤羹</option>
+            <option>特色菜</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>说明</span>
+          <textarea id="dishDesc" name="desc" rows="2" maxlength="48" placeholder="例如：微辣、适合配饭"></textarea>
+        </label>
+
+        <label class="field">
+          <span>图片</span>
+          <input id="dishImage" name="image" type="file" accept="image/*" />
+        </label>
+
+        <button class="primary-button full" type="submit">保存菜品</button>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
