@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>家里点餐</title>
     <link rel="stylesheet" href="./styles.css" />
+    <script>
+      window.FAMILY_ORDER_SUPABASE = window.FAMILY_ORDER_SUPABASE || {
+        url: "",
+        anonKey: "",
+      };
+    </script>
   </head>
   <body>
     <main class="phone-shell">
@@ -37,7 +43,7 @@
       <section class="content">
         <nav class="categories" id="categoryTabs" aria-label="菜品分类"></nav>
         <section class="menu-area">
-          <h2 id="categoryTitle">煮食</h2>
+          <h2 id="categoryTitle">主食</h2>
           <div class="menu" id="menuList" aria-label="菜单"></div>
         </section>
       </section>
@@ -160,6 +166,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <script src="./script.js"></script>
+    <script defer src="./script.js"></script>
   </body>
 </html>
