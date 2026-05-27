@@ -256,6 +256,24 @@ function bindEvents() {
   on(el.backToMenu, "click", closeOrderPage);
   on(el.openTodayOrders, "click", openTodayOrdersPage);
   on(el.closeTodayOrders, "click", closeTodayOrdersPage);
+  on(el.todayOrdersList, "click", (event) => {
+    const btn = event.target && event.target.closest ? event.target.closest("[data-action]") : null;
+    if (!btn) return;
+    const id = btn.dataset.id;
+    const action = btn.dataset.action;
+    if (action === "toggleDone") {
+      const order = state.orders.find((o) => o.id === id);
+      if (!order) return;
+      const updated = { ...order, isDone: !order.isDone };
+      state.orders = upsertById(state.orders, updated);
+      safeWriteJson(STORAGE_KEYS.orders, state.orders);
+      renderTodayOrders();
+      safeToast(updated.isDone ? "已标记完成" : "已取消完成");
+    }
+    if (action === "editOrder") {
+      openEditOrderDialog(id);
+    }
+  });
   on(el.refreshTodayOrders, "click", async () => {
     await loadRemoteOrders();
     renderTodayOrders();
@@ -423,14 +441,52 @@ function renderTodayOrders() {
 
 function renderHistoryOrder(order) {
   const items = (order.items || []).map((item) => `${item.name} x${Number(item.quantity || 0)}`).join("、");
-  return createNode("section", { className: "history-order" }, [
-    createNode("div", {}, [
-      createNode("span", { className: "order-tag", text: `#${order.pickupCode || "0000"}` }),
-      createNode("strong", { text: `${Number(order.totalCount || 0)}件菜` }),
-      createNode("small", { text: order.createdLabel || "" }),
-    ]),
-    createNode("p", { text: items || "暂无菜品明细" }),
-  ]);
+  const section = createNode("section", { className: `history-order${order.isDone ? " done" : ""}` });
+
+  const meta = createNode("div", { className: "history-order-meta" });
+  meta.append(
+    createNode("span", { className: "order-tag", text: `#${order.pickupCode || "0000"}` }),
+    createNode("strong", { text: `${Number(order.totalCount || 0)}件菜` }),
+    createNode("small", { text: order.createdLabel || "" })
+  );
+
+  const actions = createNode("div", { className: "history-order-actions" });
+
+  const doneBtn = createNode("button", { className: `pill-button${order.isDone ? " done-active" : ""}`, text: order.isDone ? "✓ 已完成" : "标记完成", type: "button" });
+  doneBtn.dataset.action = "toggleDone";
+  doneBtn.dataset.id = order.id;
+
+  const editBtn = createNode("button", { className: "pill-button", text: "修改", type: "button" });
+  editBtn.dataset.action = "editOrder";
+  editBtn.dataset.id = order.id;
+
+  actions.append(doneBtn, editBtn);
+  section.append(meta, createNode("p", { text: items || "暂无菜品明细" }), actions);
+  return section;
+}
+
+function openEditOrderDialog(orderId) {
+  const order = state.orders.find((o) => o.id === orderId);
+  if (!order) return;
+  const names = order.items.map((item) => `${item.name} x${item.quantity}`).join("\n");
+  const input = prompt("修改订单菜品（每行一个，格式：菜名 x数量）：", names);
+  if (input === null) return;
+  const newItems = input.split("\n").map((line) => {
+    const match = line.trim().match(/^(.+?)\s*x(\d+)$/);
+    if (!match) return null;
+    const existing = order.items.find((i) => i.name === match[1].trim());
+    return existing ? { ...existing, quantity: Number(match[2]) } : { id: `item-${Date.now()}`, name: match[1].trim(), category: "", quantity: Number(match[2]), image: fallbackDishImage() };
+  }).filter(Boolean);
+  if (!newItems.length) { safeToast("格式不对，请重新输入"); return; }
+  const updated = { ...order, items: newItems, totalCount: newItems.reduce((s, i) => s + i.quantity, 0) };
+  state.orders = upsertById(state.orders, updated);
+  safeWriteJson(STORAGE_KEYS.orders, state.orders);
+  renderTodayOrders();
+  safeToast("订单已修改");
+  if (state.supabaseReady) {
+    state.supabase.from("orders").update({ items: newItems, total_count: updated.totalCount }).eq("id", orderId)
+      .then(({ error }) => { if (error) console.error(APP_LOG, "Failed to update order", error); });
+  }
 }
 
 function handleCategoryClick(event) {
@@ -688,6 +744,7 @@ function normalizeOrder(order) {
     createdAt: String(order && order.createdAt ? order.createdAt : order && order.created_at ? order.created_at : new Date().toISOString()),
     createdLabel: String(order && order.createdLabel ? order.createdLabel : order && order.created_label ? order.created_label : formatDateTime(new Date())),
     totalCount: Number(order && order.totalCount !== undefined ? order.totalCount : order && order.total_count !== undefined ? order.total_count : items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)),
+    isDone: !!(order && order.isDone),
     items: items.map((item) => ({
       id: String(item && item.id ? item.id : ""),
       name: String(item && item.name ? item.name : "未命名菜品"),
@@ -849,3 +906,16 @@ function todayKey(date = new Date()) {
 function pad(value) {
   return String(value).padStart(2, "0");
 }
+
+// Inject styles for order actions
+(function injectOrderStyles() {
+  const style = document.createElement("style");
+  style.textContent = `
+    .history-order-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .history-order-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .history-order.done { opacity: 0.6; }
+    .history-order.done p { text-decoration: line-through; }
+    .pill-button.done-active { background: #4caf50; color: white; border-color: #4caf50; }
+  `;
+  document.head.append(style);
+})();
