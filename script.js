@@ -270,8 +270,11 @@ function bindEvents() {
       renderTodayOrders();
       safeToast(updated.isDone ? "已标记完成" : "已取消完成");
     }
-    if (action === "editOrder") {
-      openEditOrderDialog(id);
+    if (action === "deleteOrder") {
+      state.orders = state.orders.filter((o) => o.id !== id);
+      safeWriteJson(STORAGE_KEYS.orders, state.orders);
+      renderTodayOrders();
+      safeToast("订单已删除");
     }
   });
   on(el.refreshTodayOrders, "click", async () => {
@@ -456,38 +459,15 @@ function renderHistoryOrder(order) {
   doneBtn.dataset.action = "toggleDone";
   doneBtn.dataset.id = order.id;
 
-  const editBtn = createNode("button", { className: "pill-button", text: "修改", type: "button" });
-  editBtn.dataset.action = "editOrder";
-  editBtn.dataset.id = order.id;
+  const deleteBtn = createNode("button", { className: "pill-button danger", text: "删除", type: "button" });
+  deleteBtn.dataset.action = "deleteOrder";
+  deleteBtn.dataset.id = order.id;
 
-  actions.append(doneBtn, editBtn);
+  actions.append(doneBtn, deleteBtn);
   section.append(meta, createNode("p", { text: items || "暂无菜品明细" }), actions);
   return section;
 }
 
-function openEditOrderDialog(orderId) {
-  const order = state.orders.find((o) => o.id === orderId);
-  if (!order) return;
-  const names = order.items.map((item) => `${item.name} x${item.quantity}`).join("\n");
-  const input = prompt("修改订单菜品（每行一个，格式：菜名 x数量）：", names);
-  if (input === null) return;
-  const newItems = input.split("\n").map((line) => {
-    const match = line.trim().match(/^(.+?)\s*x(\d+)$/);
-    if (!match) return null;
-    const existing = order.items.find((i) => i.name === match[1].trim());
-    return existing ? { ...existing, quantity: Number(match[2]) } : { id: `item-${Date.now()}`, name: match[1].trim(), category: "", quantity: Number(match[2]), image: fallbackDishImage() };
-  }).filter(Boolean);
-  if (!newItems.length) { safeToast("格式不对，请重新输入"); return; }
-  const updated = { ...order, items: newItems, totalCount: newItems.reduce((s, i) => s + i.quantity, 0) };
-  state.orders = upsertById(state.orders, updated);
-  safeWriteJson(STORAGE_KEYS.orders, state.orders);
-  renderTodayOrders();
-  safeToast("订单已修改");
-  if (state.supabaseReady) {
-    state.supabase.from("orders").update({ items: newItems, total_count: updated.totalCount }).eq("id", orderId)
-      .then(({ error }) => { if (error) console.error(APP_LOG, "Failed to update order", error); });
-  }
-}
 
 function handleCategoryClick(event) {
   const button = event.target && event.target.closest ? event.target.closest("[data-category]") : null;
