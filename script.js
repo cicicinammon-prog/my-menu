@@ -830,6 +830,11 @@ function safeToast(message) {
   }, 1800);
 }
 
+function dishImage(emoji, bg, ink) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80"><rect width="80" height="80" rx="16" fill="${bg}"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-size="36">${emoji}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 function fallbackDishImage() {
   return dishImage("🍽️", "#f6dfd0", "#b6543f");
 }
