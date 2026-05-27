@@ -1,5 +1,6 @@
 const APP_LOG = "[family-order]";
 window.__familyOrderScriptLoaded = true;
+const el = {};
 const CATEGORIES = ["主食", "汤羹", "特色菜"];
 const STORAGE_KEYS = {
   cart: "familyOrderCartV5",
@@ -62,8 +63,6 @@ async function initApp() {
   subscribeRealtime();
   renderAll();
 }
-
-const el = {};
 
 function cacheElements() {
   [
