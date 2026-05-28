@@ -1,7 +1,14 @@
 const APP_LOG = "[family-order]";
 window.__familyOrderScriptLoaded = true;
 const el = {};
-const CATEGORIES = ["主食", "汤羹", "特色菜"];
+let CATEGORIES = (function() {
+  try {
+    const saved = localStorage.getItem("familyOrderCategories");
+    if (saved) { const arr = JSON.parse(saved); if (Array.isArray(arr) && arr.length) return arr; }
+  } catch(e) {}
+  return ["主食", "汤羹", "特色菜"];
+})();
+function saveCategories() { try { localStorage.setItem("familyOrderCategories", JSON.stringify(CATEGORIES)); } catch(e) {} }
 const STORAGE_KEYS = {
   cart: "familyOrderCartV5",
   dishes: "familyOrderDishesV5",
@@ -310,18 +317,21 @@ function renderAll() {
 
 function renderTabs() {
   if (!el.categoryTabs) return;
-  replaceChildren(
-    el.categoryTabs,
-    CATEGORIES.map((category) => {
-      const button = createNode("button", {
-        className: `tab ${category === state.activeCategory ? "active" : ""}`,
-        text: category,
-        type: "button",
-      });
-      button.dataset.category = category;
-      return button;
-    })
-  );
+  const tabs = CATEGORIES.map((category) => {
+    const button = createNode("button", {
+      className: `tab ${category === state.activeCategory ? "active" : ""}`,
+      text: category,
+      type: "button",
+    });
+    button.dataset.category = category;
+    return button;
+  });
+  if (state.manageMode) {
+    const manageBtn = createNode("button", { className: "tab tab-manage", text: "＋分类", type: "button" });
+    manageBtn.dataset.action = "manageCategories";
+    tabs.push(manageBtn);
+  }
+  replaceChildren(el.categoryTabs, tabs);
 }
 
 function renderMenu() {
@@ -639,6 +649,11 @@ function toggleManageMode() {
 }
 
 function openDishDialog(item) {
+  // Sync category options
+  if (el.dishCategory) {
+    el.dishCategory.innerHTML = "";
+    CATEGORIES.forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c; el.dishCategory.appendChild(o); });
+  }
   if (!el.dishForm || !el.dishDialog) return;
   el.dishForm.reset();
   setInputValue(el.dishId, item && item.id ? item.id : "");
@@ -668,7 +683,7 @@ async function handleDishSubmit(event) {
     category: String(data.get("category") || CATEGORIES[0]),
     desc: String(data.get("desc") || "").trim(),
     image,
-    sortIndex: existing && existing.sortIndex ? existing.sortIndex : Date.now(),
+    sortIndex: existing && existing.sortIndex ? existing.sortIndex : Math.floor(Date.now() / 1000),
     isActive: true,
   });
   if (!item.name) {
@@ -900,3 +915,22 @@ function pad(value) {
   `;
   document.head.append(style);
 })();
+
+function openManageCategories() {
+  const current = CATEGORIES.join("\n");
+  const input = prompt("管理分类（每行一个，顺序即显示顺序）：", current);
+  if (input === null) return;
+  const newCats = input.split("\n").map(s => s.trim()).filter(Boolean);
+  if (!newCats.length) { safeToast("至少保留一个分类"); return; }
+  CATEGORIES.length = 0;
+  newCats.forEach(c => CATEGORIES.push(c));
+  saveCategories();
+  if (!CATEGORIES.includes(state.activeCategory)) state.activeCategory = CATEGORIES[0];
+  // update select options in dish dialog
+  if (el.dishCategory) {
+    el.dishCategory.innerHTML = "";
+    CATEGORIES.forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c; el.dishCategory.appendChild(o); });
+  }
+  renderAll();
+  safeToast("分类已更新");
+}
