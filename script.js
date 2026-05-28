@@ -196,7 +196,7 @@ async function loadRemoteDishes() {
 async function seedDefaultDishes() {
   try {
     const rows = DEFAULT_DISHES.map(toDishRow);
-    const { error } = await state.supabase.from("dishes").upsert(rows, { onConflict: "id" });
+    const { error } = await state.supabase.from("dishes").upsert(rows);
     if (error) throw error;
     state.dishes = DEFAULT_DISHES;
     safeWriteJson(STORAGE_KEYS.dishes, state.dishes);
@@ -681,7 +681,8 @@ async function handleDishSubmit(event) {
   closeDishDialog();
 
   if (state.supabaseReady) {
-    const { error } = await state.supabase.from("dishes").upsert(toDishRow(item), { onConflict: "id" });
+    const row = toDishRow(item);
+    const { error } = await state.supabase.from("dishes").upsert(row);
     if (error) console.error(APP_LOG, "Failed to save dish remotely", error);
   }
   safeToast(existing ? "菜品已更新" : "菜品已添加");
