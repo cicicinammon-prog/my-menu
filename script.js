@@ -480,8 +480,10 @@ function renderHistoryOrder(order) {
 
 
 function handleCategoryClick(event) {
-  const button = event.target && event.target.closest ? event.target.closest("[data-category]") : null;
-  const category = button && button.dataset ? button.dataset.category : "";
+  const target = event.target && event.target.closest ? event.target.closest("[data-action],[data-category]") : null;
+  if (!target) return;
+  if (target.dataset.action === "manageCategories") { openManageCategories(); return; }
+  const category = target.dataset.category;
   if (!category || !CATEGORIES.includes(category)) return;
   state.activeCategory = category;
   renderTabs();
