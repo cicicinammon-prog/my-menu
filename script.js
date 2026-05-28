@@ -301,7 +301,13 @@ function on(target, eventName, handler) {
   if (!target) return;
   target.addEventListener(eventName, (event) => {
     try {
-      handler(event);
+      const result = handler(event);
+      if (result && typeof result.catch === "function") {
+        result.catch((error) => {
+          console.error(APP_LOG, `Async event handler failed: ${eventName}`, error);
+          safeToast("操作失败，请稍后再试");
+        });
+      }
     } catch (error) {
       console.error(APP_LOG, `Event handler failed: ${eventName}`, error);
       safeToast("操作失败，请稍后再试");
@@ -555,7 +561,10 @@ async function openOrderPage() {
     safeToast("先选几道菜");
     return;
   }
-  const order = await saveOrder(buildOrder(lines));
+  // Show immediately with local order, save to Supabase in background
+  const order = buildOrder(lines);
+  state.orders = upsertById(state.orders, order);
+  safeWriteJson(STORAGE_KEYS.orders, state.orders);
   renderOrderDetail(order);
   state.cart.clear();
   saveCart();
@@ -564,6 +573,10 @@ async function openOrderPage() {
   if (el.cartPanel) el.cartPanel.hidden = true;
   if (el.cartToggle) el.cartToggle.setAttribute("aria-expanded", "false");
   showDialog(el.orderDialog);
+  // Save to Supabase in background
+  if (state.supabaseReady) {
+    saveOrder(order).catch((e) => console.error(APP_LOG, "Background order save failed", e));
+  }
 }
 
 function closeOrderPage() {
@@ -594,10 +607,7 @@ function buildOrder(lines) {
 }
 
 async function saveOrder(order) {
-  state.orders = upsertById(state.orders, order);
-  safeWriteJson(STORAGE_KEYS.orders, state.orders);
   if (!state.supabaseReady) return order;
-
   try {
     const { data, error } = await state.supabase.from("orders").insert(toOrderRow(order)).select().single();
     if (error) throw error;
@@ -607,7 +617,6 @@ async function saveOrder(order) {
     return saved;
   } catch (error) {
     console.error(APP_LOG, "Failed to save order remotely", error);
-    safeToast("网络暂时不可用，订单已保存在本机");
     return order;
   }
 }
@@ -647,7 +656,7 @@ function applySavedTheme() {
 function toggleManageMode() {
   state.manageMode = !state.manageMode;
   setText(el.toggleManage, state.manageMode ? "完成管理" : "管理菜品");
-  renderMenu();
+  renderAll();
 }
 
 function openDishDialog(item) {
@@ -697,12 +706,14 @@ async function handleDishSubmit(event) {
   renderAll();
   closeDishDialog();
 
+  safeToast(existing ? "菜品已更新" : "菜品已添加");
+  // Save to Supabase in background
   if (state.supabaseReady) {
     const row = toDishRow(item);
-    const { error } = await state.supabase.from("dishes").upsert(row);
-    if (error) console.error(APP_LOG, "Failed to save dish remotely", error);
+    state.supabase.from("dishes").upsert(row)
+      .then(({ error }) => { if (error) console.error(APP_LOG, "Failed to save dish remotely", error); })
+      .catch((e) => console.error(APP_LOG, "Dish save error", e));
   }
-  safeToast(existing ? "菜品已更新" : "菜品已添加");
 }
 
 function fileToDataUrl(file) {
