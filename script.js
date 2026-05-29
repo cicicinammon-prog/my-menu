@@ -333,7 +333,7 @@ function renderTabs() {
     return button;
   });
   if (state.manageMode) {
-    const manageBtn = createNode("button", { className: "tab tab-manage", text: "＋分类", type: "button" });
+    const manageBtn = createNode("button", { className: "tab tab-manage", text: "修改分类", type: "button" });
     manageBtn.dataset.action = "manageCategories";
     tabs.push(manageBtn);
   }
@@ -718,10 +718,20 @@ async function handleDishSubmit(event) {
 
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 200;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", 0.75));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Image load failed")); };
+    img.src = url;
   });
 }
 
@@ -930,20 +940,53 @@ function pad(value) {
 })();
 
 function openManageCategories() {
-  const current = CATEGORIES.join("\n");
-  const input = prompt("管理分类（每行一个，顺序即显示顺序）：", current);
-  if (input === null) return;
-  const newCats = input.split("\n").map(s => s.trim()).filter(Boolean);
-  if (!newCats.length) { safeToast("至少保留一个分类"); return; }
-  CATEGORIES.length = 0;
-  newCats.forEach(c => CATEGORIES.push(c));
-  saveCategories();
-  if (!CATEGORIES.includes(state.activeCategory)) state.activeCategory = CATEGORIES[0];
-  // update select options in dish dialog
-  if (el.dishCategory) {
-    el.dishCategory.innerHTML = "";
-    CATEGORIES.forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c; el.dishCategory.appendChild(o); });
+  const choice = prompt("修改分类：\n输入 + 添加分类\n输入 - 删除分类", "");
+  if (choice === null) return;
+  const cmd = choice.trim();
+  if (cmd === "+") {
+    const name = prompt("输入新分类名称：", "");
+    if (name === null || name.trim() === "") return;
+    const trimmed = name.trim();
+    if (CATEGORIES.includes(trimmed)) { safeToast("分类已存在"); return; }
+    CATEGORIES.push(trimmed);
+    saveCategories();
+    syncDishCategorySelect();
+    renderAll();
+    safeToast("已添加分类：" + trimmed);
+  } else if (cmd === "-") {
+    const list = CATEGORIES.map((c, i) => `${i + 1}. ${c}`).join("\n");
+    const pick = prompt("选择要操作的分类编号：\n" + list, "");
+    if (pick === null || pick.trim() === "") return;
+    const idx = parseInt(pick.trim(), 10) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= CATEGORIES.length) { safeToast("编号不对，请重新输入"); return; }
+    const current = CATEGORIES[idx];
+    const action = prompt(`"${current}"\n\n输入 d 删除\n输入新名字 修改`, "");
+    if (action === null || action.trim() === "") return;
+    if (action.trim().toLowerCase() === "d") {
+      if (CATEGORIES.length <= 1) { safeToast("至少保留一个分类"); return; }
+      CATEGORIES.splice(idx, 1);
+      if (!CATEGORIES.includes(state.activeCategory)) state.activeCategory = CATEGORIES[0];
+      saveCategories();
+      syncDishCategorySelect();
+      renderAll();
+      safeToast("已删除分类：" + current);
+    } else {
+      const newName = action.trim();
+      if (CATEGORIES.includes(newName)) { safeToast("分类名已存在"); return; }
+      CATEGORIES[idx] = newName;
+      if (state.activeCategory === current) state.activeCategory = newName;
+      saveCategories();
+      syncDishCategorySelect();
+      renderAll();
+      safeToast("已修改：" + current + " → " + newName);
+    }
+  } else {
+    safeToast("请输入 + 或 -");
   }
-  renderAll();
-  safeToast("分类已更新");
+}
+
+function syncDishCategorySelect() {
+  if (!el.dishCategory) return;
+  el.dishCategory.innerHTML = "";
+  CATEGORIES.forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c; el.dishCategory.appendChild(o); });
 }
