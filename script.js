@@ -940,49 +940,127 @@ function pad(value) {
 })();
 
 function openManageCategories() {
-  const choice = prompt("修改分类：\n输入 + 添加分类\n输入 - 删除分类", "");
-  if (choice === null) return;
-  const cmd = choice.trim();
-  if (cmd === "+") {
-    const name = prompt("输入新分类名称：", "");
-    if (name === null || name.trim() === "") return;
-    const trimmed = name.trim();
-    if (CATEGORIES.includes(trimmed)) { safeToast("分类已存在"); return; }
-    CATEGORIES.push(trimmed);
-    saveCategories();
-    syncDishCategorySelect();
-    renderAll();
-    safeToast("已添加分类：" + trimmed);
-  } else if (cmd === "-") {
-    const list = CATEGORIES.map((c, i) => `${i + 1}. ${c}`).join("\n");
-    const pick = prompt("选择要操作的分类编号：\n" + list, "");
-    if (pick === null || pick.trim() === "") return;
-    const idx = parseInt(pick.trim(), 10) - 1;
-    if (isNaN(idx) || idx < 0 || idx >= CATEGORIES.length) { safeToast("编号不对，请重新输入"); return; }
-    const current = CATEGORIES[idx];
-    const action = prompt(`"${current}"\n\n输入 d 删除\n输入新名字 修改`, "");
-    if (action === null || action.trim() === "") return;
-    if (action.trim().toLowerCase() === "d") {
-      if (CATEGORIES.length <= 1) { safeToast("至少保留一个分类"); return; }
-      CATEGORIES.splice(idx, 1);
-      if (!CATEGORIES.includes(state.activeCategory)) state.activeCategory = CATEGORIES[0];
-      saveCategories();
-      syncDishCategorySelect();
-      renderAll();
-      safeToast("已删除分类：" + current);
-    } else {
-      const newName = action.trim();
-      if (CATEGORIES.includes(newName)) { safeToast("分类名已存在"); return; }
-      CATEGORIES[idx] = newName;
-      if (state.activeCategory === current) state.activeCategory = newName;
-      saveCategories();
-      syncDishCategorySelect();
-      renderAll();
-      safeToast("已修改：" + current + " → " + newName);
+  let overlay = document.getElementById("catMgrOverlay");
+  if (overlay) { overlay.remove(); }
+
+  overlay = document.createElement("div");
+  overlay.id = "catMgrOverlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-end;justify-content:center;";
+
+  const sheet = document.createElement("div");
+  sheet.style.cssText = "background:var(--bg,#fff);border-radius:20px 20px 0 0;padding:24px 20px 36px;width:100%;max-width:480px;box-shadow:0 -4px 24px rgba(0,0,0,0.12);";
+
+  function renderSheet(mode) {
+    sheet.innerHTML = "";
+
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;";
+    const title = document.createElement("h3");
+    title.style.cssText = "margin:0;font-size:17px;";
+    title.textContent = mode === "add" ? "＋ 添加分类" : mode === "edit" ? "编辑分类" : "修改分类";
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "×";
+    closeBtn.style.cssText = "background:none;border:none;font-size:24px;cursor:pointer;padding:0;line-height:1;color:var(--text,#333);";
+    closeBtn.onclick = () => overlay.remove();
+    header.append(title, closeBtn);
+    sheet.append(header);
+
+    if (mode === "main") {
+      // Two buttons: +分类 and -分类
+      const btnRow = document.createElement("div");
+      btnRow.style.cssText = "display:flex;gap:12px;";
+      const addBtn = document.createElement("button");
+      addBtn.textContent = "＋ 添加分类";
+      addBtn.style.cssText = "flex:1;padding:14px;border-radius:12px;border:2px solid var(--accent,#e8775a);background:none;color:var(--accent,#e8775a);font-size:15px;font-weight:600;cursor:pointer;";
+      addBtn.onclick = () => renderSheet("add");
+      const editBtn = document.createElement("button");
+      editBtn.textContent = "－ 编辑/删除分类";
+      editBtn.style.cssText = "flex:1;padding:14px;border-radius:12px;border:2px solid var(--accent,#e8775a);background:none;color:var(--accent,#e8775a);font-size:15px;font-weight:600;cursor:pointer;";
+      editBtn.onclick = () => renderSheet("edit");
+      btnRow.append(addBtn, editBtn);
+      sheet.append(btnRow);
+
+    } else if (mode === "add") {
+      const input = document.createElement("input");
+      input.placeholder = "输入新分类名称";
+      input.style.cssText = "width:100%;padding:12px 14px;border-radius:10px;border:1.5px solid #ddd;font-size:15px;box-sizing:border-box;margin-bottom:16px;background:var(--input-bg,#f8f8f8);color:var(--text,#333);";
+      sheet.append(input);
+      const confirmBtn = document.createElement("button");
+      confirmBtn.textContent = "确认添加";
+      confirmBtn.style.cssText = "width:100%;padding:14px;border-radius:12px;border:none;background:var(--accent,#e8775a);color:#fff;font-size:15px;font-weight:600;cursor:pointer;";
+      confirmBtn.onclick = () => {
+        const name = input.value.trim();
+        if (!name) { safeToast("请输入分类名称"); return; }
+        if (CATEGORIES.includes(name)) { safeToast("分类已存在"); return; }
+        CATEGORIES.push(name);
+        saveCategories(); syncDishCategorySelect(); renderAll();
+        safeToast("已添加：" + name);
+        overlay.remove();
+      };
+      sheet.append(confirmBtn);
+      setTimeout(() => input.focus(), 50);
+
+    } else if (mode === "edit") {
+      CATEGORIES.forEach((cat, idx) => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border,#eee);";
+        const name = document.createElement("span");
+        name.textContent = cat;
+        name.style.cssText = "font-size:15px;flex:1;";
+        const actions = document.createElement("div");
+        actions.style.cssText = "display:flex;gap:8px;";
+
+        const renameBtn = document.createElement("button");
+        renameBtn.textContent = "修改";
+        renameBtn.style.cssText = "padding:6px 14px;border-radius:8px;border:1.5px solid var(--accent,#e8775a);background:none;color:var(--accent,#e8775a);font-size:13px;cursor:pointer;";
+        renameBtn.onclick = () => {
+          const input2 = document.createElement("input");
+          input2.value = cat;
+          input2.style.cssText = "flex:1;padding:6px 10px;border-radius:8px;border:1.5px solid #ddd;font-size:14px;min-width:0;background:var(--input-bg,#f8f8f8);color:var(--text,#333);";
+          const ok = document.createElement("button");
+          ok.textContent = "✓";
+          ok.style.cssText = "padding:6px 12px;border-radius:8px;border:none;background:var(--accent,#e8775a);color:#fff;font-size:14px;cursor:pointer;";
+          ok.onclick = () => {
+            const newName = input2.value.trim();
+            if (!newName) { safeToast("名称不能为空"); return; }
+            if (CATEGORIES.includes(newName) && newName !== cat) { safeToast("分类已存在"); return; }
+            CATEGORIES[idx] = newName;
+            if (state.activeCategory === cat) state.activeCategory = newName;
+            saveCategories(); syncDishCategorySelect(); renderAll();
+            safeToast("已修改：" + cat + " → " + newName);
+            renderSheet("edit");
+          };
+          actions.innerHTML = "";
+          actions.style.cssText = "display:flex;gap:6px;flex:1;";
+          row.innerHTML = "";
+          row.append(input2, actions);
+          actions.append(ok);
+          setTimeout(() => input2.focus(), 50);
+        };
+
+        const delBtn = document.createElement("button");
+        delBtn.textContent = "删除";
+        delBtn.style.cssText = "padding:6px 14px;border-radius:8px;border:1.5px solid #e53935;background:none;color:#e53935;font-size:13px;cursor:pointer;";
+        delBtn.onclick = () => {
+          if (CATEGORIES.length <= 1) { safeToast("至少保留一个分类"); return; }
+          CATEGORIES.splice(idx, 1);
+          if (!CATEGORIES.includes(state.activeCategory)) state.activeCategory = CATEGORIES[0];
+          saveCategories(); syncDishCategorySelect(); renderAll();
+          safeToast("已删除：" + cat);
+          renderSheet("edit");
+        };
+
+        actions.append(renameBtn, delBtn);
+        row.append(name, actions);
+        sheet.append(row);
+      });
     }
-  } else {
-    safeToast("请输入 + 或 -");
   }
+
+  renderSheet("main");
+  overlay.append(sheet);
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  document.body.append(overlay);
 }
 
 function syncDishCategorySelect() {
