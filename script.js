@@ -201,8 +201,8 @@ async function loadRemoteData() {
 async function loadRemoteCategories() {
   if (!state.supabaseReady) return;
   try {
-    const { data, error } = await state.supabase.from("dishes").select("name").eq("id", "__categories__").single();
-    if (error || !data) return;
+    const { data, error } = await state.supabase.from("dishes").select("name").eq("id", "__categories__").maybeSingle();
+    if (!data) return;
     const cats = JSON.parse(data.name);
     if (Array.isArray(cats) && cats.length) {
       CATEGORIES.length = 0;
