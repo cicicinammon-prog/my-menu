@@ -8,7 +8,21 @@ let CATEGORIES = (function() {
   } catch(e) {}
   return ["主食", "汤羹", "特色菜"];
 })();
-function saveCategories() { try { localStorage.setItem("familyOrderCategories", JSON.stringify(CATEGORIES)); } catch(e) {} }
+function saveCategories() {
+  try { localStorage.setItem("familyOrderCategories", JSON.stringify(CATEGORIES)); } catch(e) {}
+  // Sync to Supabase as a special marker dish row
+  if (state.supabaseReady) {
+    state.supabase.from("dishes").upsert({
+      id: "__categories__",
+      name: JSON.stringify(CATEGORIES),
+      category: "主食",
+      description: "__categories_marker__",
+      sort_index: -1,
+      is_active: false,
+      updated_at: new Date().toISOString(),
+    }).then(({ error }) => { if (error) console.error(APP_LOG, "Failed to sync categories", error); });
+  }
+}
 const STORAGE_KEYS = {
   cart: "familyOrderCartV5",
   dishes: "familyOrderDishesV5",
@@ -180,8 +194,22 @@ async function getSupabaseConfig() {
 
 async function loadRemoteData() {
   if (!state.supabaseReady) return;
-
+  await loadRemoteCategories();
   await Promise.all([loadRemoteDishes(), loadRemoteOrders()]);
+}
+
+async function loadRemoteCategories() {
+  if (!state.supabaseReady) return;
+  try {
+    const { data, error } = await state.supabase.from("dishes").select("name").eq("id", "__categories__").single();
+    if (error || !data) return;
+    const cats = JSON.parse(data.name);
+    if (Array.isArray(cats) && cats.length) {
+      CATEGORIES.length = 0;
+      cats.forEach(c => CATEGORIES.push(c));
+      try { localStorage.setItem("familyOrderCategories", JSON.stringify(CATEGORIES)); } catch(e) {}
+    }
+  } catch(e) {}
 }
 
 async function loadRemoteDishes() {
@@ -190,7 +218,14 @@ async function loadRemoteDishes() {
     if (error) throw error;
 
     if (Array.isArray(data) && data.length) {
-      state.dishes = normalizeDishes(data.map(fromDishRow));
+      // Merge remote data with local images (images stored locally only)
+      const localDishes = safeReadJson(STORAGE_KEYS.dishes, []);
+      const localById = Object.fromEntries(localDishes.map(d => [d.id, d]));
+      const merged = data.map(fromDishRow).map(d => ({
+        ...d,
+        image: (localById[d.id] && localById[d.id].image) ? localById[d.id].image : fallbackDishImage(),
+      }));
+      state.dishes = normalizeDishes(merged);
       safeWriteJson(STORAGE_KEYS.dishes, state.dishes);
     } else {
       await seedDefaultDishes();
@@ -791,12 +826,12 @@ function fromDishRow(row) {
 }
 
 function toDishRow(item) {
+  // Don't send image to Supabase (too large); stored in localStorage only
   return {
     id: item.id,
     name: item.name,
     category: item.category,
     description: item.desc,
-    image: item.image,
     sort_index: item.sortIndex,
     is_active: item.isActive !== false,
     updated_at: new Date().toISOString(),
