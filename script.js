@@ -218,16 +218,21 @@ async function loadRemoteDishes() {
     if (error) throw error;
 
     if (Array.isArray(data) && data.length) {
-      // Merge remote data with local images (images stored locally only)
       const localDishes = safeReadJson(STORAGE_KEYS.dishes, []);
       const localById = Object.fromEntries(localDishes.map(d => [d.id, d]));
-      const merged = data.map(fromDishRow).map(d => ({
-        ...d,
-        // Use Supabase URL if available, else fall back to local cache
-        image: d.image && d.image.startsWith("http") ? d.image : (localById[d.id] && localById[d.id].image) ? localById[d.id].image : fallbackDishImage(),
-      }));
-      state.dishes = normalizeDishes(merged);
-      safeWriteJson(STORAGE_KEYS.dishes, state.dishes);
+      const merged = data
+        .filter(row => row.id !== "__categories__" && row.description !== "__categories_marker__")
+        .map(fromDishRow)
+        .map(d => ({
+          ...d,
+          image: d.image && d.image.startsWith("http") ? d.image : (localById[d.id] && localById[d.id].image) ? localById[d.id].image : fallbackDishImage(),
+        }));
+      if (merged.length) {
+        state.dishes = normalizeDishes(merged);
+        safeWriteJson(STORAGE_KEYS.dishes, state.dishes);
+      } else {
+        await seedDefaultDishes();
+      }
     } else {
       await seedDefaultDishes();
     }
