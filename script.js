@@ -741,7 +741,7 @@ async function handleDishSubmit(event) {
   // Check for duplicate name (excluding the dish being edited)
   const duplicate = state.dishes.find(d => d.name === item.name && d.id !== item.id);
   if (duplicate) {
-    safeToast("已经有"" + item.name + ""了");
+    safeToast("\u5df2\u7ecf\u6709 " + item.name + " \u4e86");
     return;
   }
   state.dishes = upsertById(state.dishes, item).sort(sortDishes);
