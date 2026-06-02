@@ -223,7 +223,8 @@ async function loadRemoteDishes() {
       const localById = Object.fromEntries(localDishes.map(d => [d.id, d]));
       const merged = data.map(fromDishRow).map(d => ({
         ...d,
-        image: (localById[d.id] && localById[d.id].image) ? localById[d.id].image : fallbackDishImage(),
+        // Use Supabase URL if available, else fall back to local cache
+        image: d.image && d.image.startsWith("http") ? d.image : (localById[d.id] && localById[d.id].image) ? localById[d.id].image : fallbackDishImage(),
       }));
       state.dishes = normalizeDishes(merged);
       safeWriteJson(STORAGE_KEYS.dishes, state.dishes);
@@ -722,9 +723,10 @@ async function handleDishSubmit(event) {
   const id = String(data.get("id") || "");
   const existing = state.dishes.find((item) => item.id === id);
   const file = el.dishImage && el.dishImage.files ? el.dishImage.files[0] : null;
-  const image = file ? await fileToDataUrl(file) : existing && existing.image ? existing.image : fallbackDishImage();
+  const dishId = id || `dish-${Date.now()}`;
+  const image = file ? await uploadImageToStorage(file, dishId) : existing && existing.image ? existing.image : fallbackDishImage();
   const item = normalizeDish({
-    id: id || `dish-${Date.now()}`,
+    id: dishId,
     name: String(data.get("name") || "").trim(),
     category: String(data.get("category") || CATEGORIES[0]),
     desc: String(data.get("desc") || "").trim(),
@@ -734,6 +736,12 @@ async function handleDishSubmit(event) {
   });
   if (!item.name) {
     safeToast("先写菜名");
+    return;
+  }
+  // Check for duplicate name (excluding the dish being edited)
+  const duplicate = state.dishes.find(d => d.name === item.name && d.id !== item.id);
+  if (duplicate) {
+    safeToast("已经有"" + item.name + ""了");
     return;
   }
   state.dishes = upsertById(state.dishes, item).sort(sortDishes);
@@ -751,23 +759,52 @@ async function handleDishSubmit(event) {
   }
 }
 
-function fileToDataUrl(file) {
+async function compressImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
-      const MAX = 200;
+      const MAX = 400;
       const scale = Math.min(1, MAX / Math.max(img.width, img.height));
       const canvas = document.createElement("canvas");
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
       canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL("image/jpeg", 0.75));
+      canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.8);
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Image load failed")); };
     img.src = url;
   });
+}
+
+async function uploadImageToStorage(file, dishId) {
+  // If no Supabase, fall back to local base64
+  if (!state.supabaseReady) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  try {
+    const blob = await compressImage(file);
+    const path = `dishes/${dishId}.jpg`;
+    const { error } = await state.supabase.storage.from("dish-images").upload(path, blob, { upsert: true, contentType: "image/jpeg" });
+    if (error) throw error;
+    const { data } = state.supabase.storage.from("dish-images").getPublicUrl(path);
+    return data.publicUrl + "?t=" + Date.now();
+  } catch (e) {
+    console.error(APP_LOG, "Image upload failed", e);
+    // Fall back to local base64
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
 }
 
 function dish(id, name, category, desc, emoji, bg, ink, sortIndex) {
@@ -826,12 +863,13 @@ function fromDishRow(row) {
 }
 
 function toDishRow(item) {
-  // Don't send image to Supabase (too large); stored in localStorage only
   return {
     id: item.id,
     name: item.name,
     category: item.category,
     description: item.desc,
+    // Only store URL (not base64) in Supabase
+    image: item.image && item.image.startsWith("http") ? item.image : "",
     sort_index: item.sortIndex,
     is_active: item.isActive !== false,
     updated_at: new Date().toISOString(),
@@ -1061,6 +1099,17 @@ function openManageCategories() {
             if (CATEGORIES.includes(newName) && newName !== cat) { safeToast("分类已存在"); return; }
             CATEGORIES[idx] = newName;
             if (state.activeCategory === cat) state.activeCategory = newName;
+            // Update all dishes in this category
+            state.dishes = state.dishes.map(d => d.category === cat ? { ...d, category: newName } : d);
+            safeWriteJson(STORAGE_KEYS.dishes, state.dishes);
+            // Sync updated dishes to Supabase
+            if (state.supabaseReady) {
+              const toUpdate = state.dishes.filter(d => d.category === newName);
+              toUpdate.forEach(d => {
+                state.supabase.from("dishes").update({ category: newName }).eq("id", d.id)
+                  .then(({ error }) => { if (error) console.error(APP_LOG, "Failed to update dish category", error); });
+              });
+            }
             saveCategories(); syncDishCategorySelect(); renderAll();
             safeToast("已修改：" + cat + " → " + newName);
             renderSheet("edit");
